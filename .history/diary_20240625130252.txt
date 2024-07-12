@@ -1,0 +1,42 @@
+Model:
+timestep = 3
+
+data = FetchDataYF()
+indicators = FetchIndicators()
+entries = TransformDataIntoSequence1(data, indicators)
+entries = TransformEntries(entries, 3, 2)
+x_train, y_train = CreateDatasetFromEntries(entries)
+
+model = keras.Sequential()
+model.add(keras.Input(shape=(None, 3, )))
+model.add(layers.Dense(64))
+model.add(layers.Dense(1))
+
+model.compile(optimizer=keras.optimizers.Adam(learning_rate=1e-5), loss=keras.losses.MeanSquaredError())
+model.summary()
+earlyStopping = keras.callbacks.EarlyStopping("val_loss", patience=5, restore_best_weights=True)
+model.fit(x_train, y_train, batch_size=4, epochs=50, callbacks=earlyStopping, verbose=1, validation_split=0.2)
+
+TestModel(model, x_train, y_train)
+
+Accuracy with different data:
+1. Input [close, volume, OBV]
+Epoch 13/20
+616/616 ━━━━━━━━━━━━━━━━━━━━ 1s 1ms/step - loss: 2374154584064.0000 - val_loss: 2437982978048.0000
+[[[1.65279999e+02 2.77610000e+06 3.94577159e+08]
+  [1.65809998e+02 2.59420000e+06 3.97171362e+08]
+  [1.67380005e+02 3.04940000e+06 4.00220739e+08]]
+
+ [[1.67380005e+02 3.04940000e+06 4.00220739e+08]
+  [1.68199997e+02 2.20710000e+06 4.02428002e+08]
+  [1.70009995e+02 3.47550000e+06 4.05903497e+08]]]
+tf.Tensor(
+[[[-1685299. ]]
+
+ [[-1727159.2]]], shape=(2, 1, 1), dtype=float32)
+[[[167.38000488 168.19999695 170.00999451]]
+
+ [[170.00999451 170.38000488 169.32000732]]]
+ 
+ 2. Input [close, volume, AD]
+

@@ -1,0 +1,15 @@
+{
+  "python.REPL.enableREPLSmartSend": false,
+  "files.exclude": {
+    "**/.git": true,
+    "**/.svn": true,
+    "**/.hg": true,
+    "**/CVS": true,
+    "**/.DS_Store": true,
+    "**/Thumbs.db": true,
+    ".history": true,
+    ".mypy_cache": true,
+    ".vscode": true
+  },
+  "explorerExclude.backup": {}
+}
