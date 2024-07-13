@@ -495,9 +495,9 @@ def CreateDatasetFromEntries(entries, numberOfValues):
       return x_train, y_train
       
 def TestModel(model: keras.Model, x_train, y_train):
-      print(x_train[-2:])
-      print(model(x_train[-2:]))
-      print(y_train[-2:])
+      print(x_train[-1:])
+      print(model(x_train[-1:]))
+      print(y_train[-1:])
       return True
 
 def TestDataset(x_train, y_train):
@@ -702,17 +702,37 @@ def IsBetterThanRandom(model: keras.Model, x_test, y_test) -> bool:
       else:
             return False
 
-class ModelEnsemble(keras.Model):
+def NormalizeOutput(output: tf.Tensor, timestep: int) -> tf.Tensor:
+      output: np.ndarray = np.array([[array for _ in range(timestep)] for array in output])
+      return output
+
+class ModelEnsemble():
       def __init__(self, model, modelBase):
-            super().__init__()
-            self.model = model
-            self.modelBase = modelBase
+            self.model: keras.Model = model
+            self.modelBase: keras.Model = modelBase
       
       def __call__(self, inputs):
-            modelOutput = self.model(inputs)
-            modelBaseOutput = self.modelBase(inputs)
-            ensembleOutput = (modelOutput + modelBaseOutput) / 2
+            modelOutput: tf.Tensor = self.model(inputs)
+            modelBaseOutput: tf.Tensor = self.modelBase(inputs)
+            modelBaseOutputNormalized = np.reshape(modelBaseOutput, modelOutput.get_shape()) # NormalizeOutput(modelBaseOutput, timestep=3)
+            #print("ensemble outputs:")
+            #print(modelOutput)
+            #print(modelBaseOutputNormalized)
+            ensembleOutput = 0.9 * modelOutput + 0.1 * modelBaseOutputNormalized
+            #print(ensembleOutput)
             return ensembleOutput
+      
+      def evaluateCustom(self, x_train, y_train):
+            changes: list = []
+            for index in range(len(x_train)):
+                  x = np.reshape(x_train[index], (3, 1))
+                  y = y_train[index]
+                  predicted = self.__call__(x)
+                  change = 100 * np.mean(abs(y - predicted) / y)
+                  changes.append(change)
+            result = np.mean(changes)
+            print(f"Evaluation loss: {result}")
+            return result
 
 class ModelRandom(keras.Model):
       def __init__(self):
@@ -730,60 +750,25 @@ def main() -> None:
       numberOfValuesToPredict: int = 5
       numberOfTickers: int = 100
 
-      stocksEntries: dict = GetStocksEntries(numberOfValues)
-      results = []
-      for ticker in stocksEntries:
-            entries = stocksEntries[ticker]
-            if numberOfValues == 1:
-                  entries = TransformEntriesFrom3To1(entries)
-            x_train, y_train = CreateDataset1(entries, timestep, numberOfValues)
-            #model = CreateLstmModel((timestep, numberOfValues), 64)
-
-            modelBase = LoadModelBaseNumberLstm(timestep, numberOfValues, numberOfTickers)
-
-            #earlyStopping = keras.callbacks.EarlyStopping("val_loss", patience=3, restore_best_weights=True)
-            #modelBase.fit(x_train, y_train, batch_size=1, epochs=3, validation_split=0.1, verbose=1)
-            result = modelBase.evaluate(x_train, y_train, batch_size=1, verbose=2)
-            results.append(result)
-      for result in results:
-            print(result)
-
       
+
 if __name__ == "__main__":
       timestep: int = 3
       numberOfValues: int = 1
       numberOfValuesToPredict: int = 5
-      numberOfTickers: int = 20
-
-      #TrainBaseNumberModel(numberOfTickers, numberOfValues, timestep, lstm=True)
+      numberOfTickers: int = 100
 
       main()
 
-
-
-
-
       """   
 
-      #stocksEntries = GetStocksEntries()
-
-      TrainBaseNumberModel(numberOfTickers, numberOfValues, timestep, lstm=False)
-      
-      entries = CreateEntries("IBM", numberOfValues)
+      #TrainBaseNumberModel(numberOfTickers, numberOfValues, timestep, lstm=True)
+      modelBase = LoadModelBaseNumberBasic(timestep, numberOfValues, numberOfTickers)
+      entries = CreateEntries("ILMN", numberOfValues)
       x_train, y_train = CreateDataset1(entries, timestep, numberOfValues)
+      PlotPredictionGraphFor1Values(modelBase, x_train, entries)
+
       
-      model = CreateBasicModel((timestep, numberOfValues), 64)
-      earlyStopping = keras.callbacks.EarlyStopping("val_loss", patience=5, restore_best_weights=True)
-      model.fit(x_train, y_train, batch_size=1, epochs=50, verbose=1, callbacks=earlyStopping, validation_split=0.1)
-      
-      modelBase = LoadModelBaseNumberLstm(timestep, numberOfValues, numberOfTickers)
-      modelBase.fit(x_train, y_train, batch_size=1, epochs=3, validation_split=0.1)
-
-      #model = CreateBasicModel((timestep, numberOfValues), 128)
-      #model.fit(x_train, y_train, batch_size=1, epochs=3, validation_split=0.1)
-
-      #modelEnsemble = ModelEnsemble(model, modelBase)
-
       #prediction = PredictValuesForAnyValues(numberOfValuesToPredict, modelEnsemble, entries, timestep)
       
       PlotPredictionGraphFor1Values(modelBase, x_train, entries)
@@ -791,4 +776,33 @@ if __name__ == "__main__":
 
             
       PlotPredictionGraphFor3Values(model, x_train, y_train, entries, prediction)
+            
+
+      modelBase = LoadModelBaseNumberBasic(timestep, numberOfValues, numberOfTickers)
+      stocksEntries: dict = GetStocksEntries(numberOfValues)
+      results = []
+      for ticker in stocksEntries:
+            entries = stocksEntries[ticker]
+            if numberOfValues == 1:
+                  entries = TransformEntriesFrom3To1(entries)
+            x_train, y_train = CreateDataset1(entries, timestep, numberOfValues)
+            model = CreateLstmModel((timestep, numberOfValues), 64)
+            
+            #modelBase.fit(x_train, y_train, batch_size=1, epochs=1, validation_split=0.1, verbose=2)
+
+            earlyStopping = keras.callbacks.EarlyStopping("val_loss", patience=3, restore_best_weights=True)
+            model.fit(x_train, y_train, batch_size=1, epochs=15, validation_split=0.1, callbacks=earlyStopping, verbose=2)
+
+            #print("modelBase:")
+            #TestModel(modelBase, x_train, y_train)
+            #print("model")
+            #TestModel(model, x_train, y_train)
+
+            modelEnsemble: ModelEnsemble = ModelEnsemble(model, modelBase)
+            print(f"Model error: {model.evaluate(x_train, y_train, batch_size=1, verbose=0)}, modelBase error: {modelBase.evaluate(x_train, y_train, batch_size=1, verbose=0)}")
+            result = modelEnsemble.evaluateCustom(x_train, y_train)
+            results.append(result)
+      for result in results:
+            print(result)      
+      
       """
