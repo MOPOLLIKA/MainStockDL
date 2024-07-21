@@ -558,7 +558,8 @@ def PlotPredictionGraphFor1Values(model: keras.Model, x_train, entries):
             yPredicted.append(prediction)
       
       plt.plot(xActual, yActual, color="red", label="Actual")
-      plt.plot(xPredicted, yPredicted, color="blue", label="Covered prediction")
+      plt.plot(xPredicted, yPredicted, color="blue", label="Prediction")
+      plt.legend()
       plt.show()
       return True
 
@@ -572,6 +573,21 @@ def CreateBasicModel(inputShape, units):
 
       model.compile(
             optimizer=keras.optimizers.Adam(learning_rate=1e-3),
+            loss=keras.losses.MeanAbsolutePercentageError()
+      )
+      model.summary()
+      return model
+
+def CreateBasicDeepModel(inputShape, units):
+      model = keras.Sequential()
+      model.add(keras.Input(shape=inputShape))
+      model.add(layers.Dense(units))
+      model.add(layers.Dropout(0.1))
+      model.add(layers.Dense(units))
+      model.add(layers.Dense(1))
+
+      model.compile(
+            optimizer=keras.optimizers.Adam(learning_rate=1e-4),
             loss=keras.losses.MeanAbsolutePercentageError()
       )
       #model.summary()
@@ -673,6 +689,11 @@ def CreateEntries(ticker, numberOfValues):
       entries = TransformDataIntoSequence1(data, indicators, numberOfValues)
       return entries
 
+def CreateEntriesFromCsv(filepath: str, featureName: str) -> list:
+      data: pd.DataFrame = pd.read_csv(filepath)
+      entries: np.ndarray = data[featureName].values
+      return list(entries)
+
 def CreateDataset1(entries, timestep, numberOfValues):
       stride = timestep if numberOfValues == 3 else 1
       entriesTransformed = TransformEntries(entries, timestep, stride)
@@ -706,10 +727,35 @@ def NormalizeOutput(output: tf.Tensor, timestep: int) -> tf.Tensor:
       output: np.ndarray = np.array([[array for _ in range(timestep)] for array in output])
       return output
 
+def FormatDatesIntoNumbers(entries: dict):
+      dates: list = list(entries.keys())
+      values: list = list(entries.values())
+
+      dateZero: dt.datetime = dt.datetime.strptime(dates[0], "%Y-%m-%d")
+      dates: list = [(dt.datetime.strptime(date, "%Y-%m-%d") - dateZero).days for date in dates]
+
+      entriesFormatted: dict = {}
+      for index in range(len(dates)):
+            entriesFormatted[dates[index]] = values[index]
+      return entriesFormatted
+
+def ParseTime(time: str) -> dt.timedelta:
+      times = time.split(" days ") # ["d", "hh:mm:ss"]
+      days = int(times[0])
+      times1 = times[1].split(":")
+      hours = int(times1[0])
+      minutes = int(times1[1])
+      seconds = int(times1[2])
+      time = dt.timedelta(days=days, hours=hours, minutes=minutes, seconds=seconds) # hours=hours, minutes=minutes, seconds=seconds
+      return time
+
+def GetUnitsForFileSize(size: int) -> int:
+      """Size is in bytes"""
+
 class ModelEnsemble():
       def __init__(self, model, modelBase):
             self.model: keras.Model = model
-            self.modelBase: keras.Model = modelBase
+            self.modelBase = modelBase
       
       def __call__(self, inputs):
             modelOutput: tf.Tensor = self.model(inputs)
@@ -718,7 +764,7 @@ class ModelEnsemble():
             #print("ensemble outputs:")
             #print(modelOutput)
             #print(modelBaseOutputNormalized)
-            ensembleOutput = 0.9 * modelOutput + 0.1 * modelBaseOutputNormalized
+            ensembleOutput = 0.3 * modelOutput + 0.7 * modelBaseOutputNormalized
             #print(ensembleOutput)
             return ensembleOutput
       
@@ -750,6 +796,25 @@ def main() -> None:
       numberOfValuesToPredict: int = 5
       numberOfTickers: int = 100
 
+      filepaths = ["/Users/MOPOLLIKA/python_StockDL/globaltemperature/GlobalTemperatures.json",
+                   "/Users/MOPOLLIKA/python_StockDL/airquality/airquality.json",
+                   "/Users/MOPOLLIKA/python_StockDL/magneticfield/solar_wind.json",
+                   "/Users/MOPOLLIKA/python_StockDL/magneticfield/solar_wind_simplified.json",
+                   "/Users/MOPOLLIKA/python_StockDL/covid/covid.json",
+                   "/Users/MOPOLLIKA/python_StockDL/soybeans/soybeans.json"]
+      
+      for filepath in filepaths:
+            with open(filepath, "r") as f:
+                  entries = json.load(f)
+                  f.close()
+            x_train, y_train = CreateDataset1(entries, timestep, numberOfValues)
+            modelBase = LoadModelBaseNumberLstm(timestep, numberOfValues, numberOfTickers)
+            print(filepath.split("/")[-1])
+            model = CreateBasicDeepModel((timestep, numberOfValues), 128)
+            earlyStopping = keras.callbacks.EarlyStopping("val_loss", patience=5)
+            modelBase.fit(x_train, y_train, batch_size=1, epochs=3, callbacks=earlyStopping, validation_split=0.2, verbose=1)
+            modelBase.evaluate(x_train, y_train, batch_size=1, verbose=1)
+
       
 
 if __name__ == "__main__":
@@ -757,7 +822,7 @@ if __name__ == "__main__":
       numberOfValues: int = 1
       numberOfValuesToPredict: int = 5
       numberOfTickers: int = 100
-
+      
       main()
 
       """   
